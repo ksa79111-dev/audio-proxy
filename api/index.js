@@ -24,19 +24,6 @@ export default async function handler(req) {
     });
   }
 
-  if (path === '/api/debug') {
-    const fileId = url.searchParams.get('id');
-    return new Response(JSON.stringify({
-      time: new Date().toISOString(),
-      fileId,
-      rawId: url.searchParams.get('id'),
-      encoded: encodeURIComponent(fileId),
-      url: `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}`
-    }, null, 2), {
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-  
   // 🎵 /api/audio?id=...
   if (path === '/api/audio') {
     const fileId = url.searchParams.get('id');
@@ -47,19 +34,18 @@ export default async function handler(req) {
       return new Response('❌ Missing "id" parameter', { status: 400 });
     }
 
-    // ✅ УБРАЛИ ЛИШНИЕ ПРОБЕЛЫ В URL!
-    const initialDriveUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}`;
+    // ✅ УБРАЛИ ПРОБЕЛЫ, ДОБАВИЛИ confirm=t
+    const initialDriveUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}&confirm=t`;
 
     // Получаем клиентский Range (например: "bytes=1000-2000")
     const clientRange = req.headers.get('range');
 
     try {
-      // Шаг 1: делаем HEAD или GET с redirect: 'manual'
-      const method = clientRange ? 'GET' : 'GET'; // можно и HEAD, но Drive иногда не отдаёт content-length в HEAD
+      // Шаг 1: делаем GET с redirect: 'manual'
       let driveRes = await fetch(initialDriveUrl, {
-        method,
+        method: 'GET',
         headers: clientRange ? { 'Range': clientRange } : {},
-        redirect: 'manual', // ← КРИТИЧЕСКИ ВАЖНО
+        redirect: 'manual',
       });
 
       // Шаг 2: если 302 — идём по Location вручную, с тем же Range
@@ -72,7 +58,7 @@ export default async function handler(req) {
 
         // Повторяем запрос на location — с тем же Range
         driveRes = await fetch(location, {
-          method,
+          method: 'GET',
           headers: clientRange ? { 'Range': clientRange } : {},
           redirect: 'manual',
         });
@@ -86,7 +72,7 @@ export default async function handler(req) {
       // Обязательные:
       responseHeaders.set('Accept-Ranges', 'bytes');
       responseHeaders.set('Cache-Control', 'public, max-age=3600');
-      responseHeaders.set('Content-Type', 'audio/mpeg'); // или можно взять из driveRes
+      responseHeaders.set('Content-Type', 'audio/mpeg'); // можно взять из driveRes.headers.get('content-type')
 
       // Динамические — только если есть
       const contentLength = driveRes.headers.get('content-length');
@@ -95,7 +81,7 @@ export default async function handler(req) {
       if (contentLength) responseHeaders.set('Content-Length', contentLength);
       if (contentRange) responseHeaders.set('Content-Range', contentRange);
 
-      // Чистим нежелательные заголовки (безопасность + CORS)
+      // Чистим нежелательные заголовки
       [
         'Content-Disposition',
         'X-Frame-Options',
@@ -105,7 +91,7 @@ export default async function handler(req) {
       ].forEach(h => responseHeaders.delete(h));
 
       // ✅ Логгирование
-      const status = driveRes.status; // 200 или 206
+      const status = driveRes.status;
       log('success', {
         fileId,
         status,
