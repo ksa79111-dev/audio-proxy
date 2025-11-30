@@ -36,12 +36,11 @@ export default async function handler(req) {
       res = await fetch(location, {
         method: 'GET',
         headers: clientRange ? { 'Range': clientRange } : {},
-        redirect: 'manual', // ← важно!
+        redirect: 'manual',
       });
     }
 
     // 🔹 Шаг 3: Отправляем ответ
-    const status = res.status;
     const headers = new Headers();
 
     // Обязательные
@@ -58,6 +57,9 @@ export default async function handler(req) {
 
     // Чистим ненужные заголовки
     ['content-disposition', 'x-frame-options', 'content-security-policy'].forEach(h => headers.delete(h));
+
+    // ⚡️ Ключевой момент: если есть Content-Range → статус должен быть 206
+    const status = contentRange ? 206 : res.status;
 
     log('ok', { status, contentRange, contentLength });
 
