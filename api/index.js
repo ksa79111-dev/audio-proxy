@@ -24,6 +24,19 @@ export default async function handler(req) {
     });
   }
 
+  if (path === '/api/debug') {
+    const fileId = url.searchParams.get('id');
+    return new Response(JSON.stringify({
+      time: new Date().toISOString(),
+      fileId,
+      rawId: url.searchParams.get('id'),
+      encoded: encodeURIComponent(fileId),
+      url: `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}`
+    }, null, 2), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+  
   // 🎵 /api/audio?id=...
   if (path === '/api/audio') {
     const fileId = url.searchParams.get('id');
