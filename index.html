@@ -181,64 +181,6 @@
       });
     }
     
-    // playSong v1 -----------------------------------------
-    // Воспроизведение
-    // function playSong(index) {
-    //   if (index < 0 || index >= songs.length) return;
-      
-    //   currentIndex = index;
-    //   const song = songs[index];
-      
-    //   const directUrl = `https://drive.google.com/uc?export=download&id=${song.id}&confirm=t`;
-    //   const proxyUrl = 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(directUrl);
-      
-    //   player.src = proxyUrl;
-    //   statusEl.textContent = `▶️ Загрузка: ${song.name}…`;
-
-    //   player.play()
-    //     .then(() => {
-    //       statusEl.textContent = `▶️ Играет: ${song.name}`;
-    //       playBtn.textContent = '⏹️ Остановить';
-    //       isPlaying = true;
-    //       highlightCurrent(index);
-    //     })
-    //     .catch(err => {
-    //       statusEl.textContent = `❌ Не удалось: ${song.name} (${err.name})`;
-    //     });
-    // }
-
-        // playSong v2 -----------------------------------------
-    // function playSong(index) {
-    //   if (index < 0 || index >= songs.length) return;
-    
-    //   currentIndex = index;
-    //   const song = songs[index];
-    
-    //   // 🔒 Безопасная сборка URL — экранируем ТОЛЬКО ID
-    //   const fileId = encodeURIComponent(song.id); // только ID, не весь URL!
-    //   const directUrl = `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
-      
-    //   // Теперь — proxy:
-    //   const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(directUrl)}`;
-    //   // const proxyUrl = `https://audio-proxy-google-drivev1.vercel.app/api/audio?id=${song.id}`;
-      
-    
-    //   player.src = proxyUrl;
-    //   statusEl.textContent = `▶️ Загрузка: ${song.name}…`;
-    
-    //   player.play()
-    //     .then(() => {
-    //       statusEl.textContent = `▶️ Играет: ${song.name}`;
-    //       playBtn.textContent = '⏹️ Остановить';
-    //       isPlaying = true;
-    //       highlightCurrent(index);
-    //     })
-    //     .catch(err => {
-    //       console.error('Playback error:', err);
-    //       statusEl.textContent = `❌ Не удалось: ${song.name} (${err.name || 'ошибка'})`;
-    //     });
-    // }
-    
     // playSong v3 -----------------------------------------
       function playSong(index) {
       if (index < 0 || index >= songs.length) return;
