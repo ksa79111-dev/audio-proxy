@@ -4,115 +4,67 @@ export const config = {
 };
 
 function log(event, data = {}) {
-  console.log(JSON.stringify({
-    time: new Date().toISOString(),
-    event,
-    ...data
-  }));
+  console.log(JSON.stringify({ time: new Date().toISOString(), event, ...data }));
 }
 
 export default async function handler(req) {
   const url = new URL(req.url);
-  const path = url.pathname;
-
-  // ➕ Stats
-  if (path === '/api/stats') {
-    return new Response(JSON.stringify({
-      message: 'Stats API ready'
-    }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
+  if (url.pathname !== '/api/audio') {
+    return new Response('🎧 Audio Proxy by ksa79111-dev', { status: 200 });
   }
 
-  // 🎵 /api/audio?id=...
-  if (path === '/api/audio') {
-    const fileId = url.searchParams.get('id');
-    const referer = req.headers.get('referer') || 'unknown';
-    
-    if (!fileId) {
-      log('error', { type: 'missing_id', referer });
-      return new Response('❌ Missing "id" parameter', { status: 400 });
-    }
+  const fileId = url.searchParams.get('id');
+  if (!fileId) {
+    return new Response('❌ Missing "id"', { status: 400 });
+  }
 
-    // ✅ УБРАЛИ ПРОБЕЛЫ, ДОБАВИЛИ confirm=t
-    const initialDriveUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}&confirm=t`;
+  const clientRange = req.headers.get('range');
 
-    // Получаем клиентский Range (например: "bytes=1000-2000")
-    const clientRange = req.headers.get('range');
+  try {
+    // 🔹 Шаг 1: Получить прямую ссылку (Location) через HEAD + confirm=t
+    const headUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}&confirm=t`;
+    let res = await fetch(headUrl, {
+      method: 'HEAD',
+      redirect: 'manual',
+    });
 
-    try {
-      // Шаг 1: делаем GET с redirect: 'manual'
-      let driveRes = await fetch(initialDriveUrl, {
+    if (res.status === 302) {
+      const location = res.headers.get('location');
+      if (!location) throw new Error('No Location in 302');
+
+      // 🔹 Шаг 2: Запросить по прямой ссылке — с Range
+      res = await fetch(location, {
         method: 'GET',
         headers: clientRange ? { 'Range': clientRange } : {},
         redirect: 'manual',
       });
-
-      // Шаг 2: если 302 — идём по Location вручную, с тем же Range
-      if (driveRes.status === 302) {
-        const location = driveRes.headers.get('location');
-        if (!location) {
-          log('error', { type: 'no_location', fileId });
-          return new Response('❌ Redirect without Location', { status: 500 });
-        }
-
-        // Повторяем запрос на location — с тем же Range
-        driveRes = await fetch(location, {
-          method: 'GET',
-          headers: clientRange ? { 'Range': clientRange } : {},
-          redirect: 'manual',
-        });
-      }
-
-      // Теперь driveRes — либо 200, либо 206
-
-      // 🧾 Формируем заголовки ответа
-      const responseHeaders = new Headers();
-
-      // Обязательные:
-      responseHeaders.set('Accept-Ranges', 'bytes');
-      responseHeaders.set('Cache-Control', 'public, max-age=3600');
-      responseHeaders.set('Content-Type', 'audio/mpeg'); // можно взять из driveRes.headers.get('content-type')
-
-      // Динамические — только если есть
-      const contentLength = driveRes.headers.get('content-length');
-      const contentRange = driveRes.headers.get('content-range');
-
-      if (contentLength) responseHeaders.set('Content-Length', contentLength);
-      if (contentRange) responseHeaders.set('Content-Range', contentRange);
-
-      // Чистим нежелательные заголовки
-      [
-        'Content-Disposition',
-        'X-Frame-Options',
-        'Content-Security-Policy',
-        'X-Content-Type-Options',
-        'Strict-Transport-Security'
-      ].forEach(h => responseHeaders.delete(h));
-
-      // ✅ Логгирование
-      const status = driveRes.status;
-      log('success', {
-        fileId,
-        status,
-        range: clientRange,
-        contentLength,
-        contentRange
-      });
-
-      // 🚀 Возвращаем streaming-ответ
-      return new Response(driveRes.body, {
-        status,
-        headers: responseHeaders
-      });
-
-    } catch (err) {
-      log('proxy_error', { fileId, error: err.message, stack: err.stack });
-      return new Response(`❌ Proxy error: ${err.message}`, { status: 500 });
     }
-  }
 
-  return new Response('🎧 Audio Proxy by ksa79111-dev\nEndpoints: /api/audio?id=..., /api/stats', {
-    headers: { 'Content-Type': 'text/plain' }
-  });
+    // 🔹 Шаг 3: Формируем ответ
+    const status = res.status; // 200 или 206
+    const headers = new Headers();
+
+    // Обязательные
+    headers.set('Accept-Ranges', 'bytes');
+    headers.set('Cache-Control', 'public, max-age=3600');
+    headers.set('Content-Type', res.headers.get('content-type') || 'audio/mpeg');
+
+    // Динамические
+    const contentLength = res.headers.get('content-length');
+    const contentRange = res.headers.get('content-range');
+
+    if (contentLength) headers.set('Content-Length', contentLength);
+    if (contentRange) headers.set('Content-Range', contentRange);
+
+    // Чистим
+    ['content-disposition', 'x-frame-options', 'content-security-policy'].forEach(h => headers.delete(h));
+
+    log('ok', { status, contentRange, contentLength });
+
+    return new Response(res.body, { status, headers });
+
+  } catch (e) {
+    log('err', { msg: e.message });
+    return new Response(`❌ ${e.message}`, { status: 500 });
+  }
 }
