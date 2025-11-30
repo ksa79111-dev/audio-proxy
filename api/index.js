@@ -3,7 +3,6 @@ export const config = {
   runtime: 'edge',
 };
 
-// 🔔 Логгирование — в Vercel Logs (в панели)
 function log(event, data = {}) {
   console.log(JSON.stringify({
     time: new Date().toISOString(),
@@ -16,18 +15,16 @@ export default async function handler(req) {
   const url = new URL(req.url);
   const path = url.pathname;
 
-  // ➕ Статистика: /stats → количество вызовов
+  // ➕ Stats
   if (path === '/api/stats') {
-    // В Edge Runtime нет persistent storage, но можно использовать KV (платно) или просто возвращать заголовки
-    // Пока — заглушка (на Hobby можно подключить free KV позже)
     return new Response(JSON.stringify({
-      message: 'Stats API ready (KV integration available on Pro plan)'
+      message: 'Stats API ready'
     }), {
       headers: { 'Content-Type': 'application/json' }
     });
   }
 
-  // 🎵 Основной endpoint: /api/audio?id=...
+  // 🎵 /api/audio?id=...
   if (path === '/api/audio') {
     const fileId = url.searchParams.get('id');
     const referer = req.headers.get('referer') || 'unknown';
@@ -37,43 +34,82 @@ export default async function handler(req) {
       return new Response('❌ Missing "id" parameter', { status: 400 });
     }
 
-    log('request', { fileId, referer });
+    // ✅ УБРАЛИ ЛИШНИЕ ПРОБЕЛЫ В URL!
+    const initialDriveUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}`;
+
+    // Получаем клиентский Range (например: "bytes=1000-2000")
+    const clientRange = req.headers.get('range');
 
     try {
-      const driveUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}&confirm=t`;
-
-      const driveRes = await fetch(driveUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; AudioPlayer/1.0)',
-        },
-        redirect: 'follow',
-        next: { revalidate: 0 }, // no cache
+      // Шаг 1: делаем HEAD или GET с redirect: 'manual'
+      const method = clientRange ? 'GET' : 'GET'; // можно и HEAD, но Drive иногда не отдаёт content-length в HEAD
+      let driveRes = await fetch(initialDriveUrl, {
+        method,
+        headers: clientRange ? { 'Range': clientRange } : {},
+        redirect: 'manual', // ← КРИТИЧЕСКИ ВАЖНО
       });
 
-      if (!driveRes.ok) {
-        const status = driveRes.status;
-        const snippet = await driveRes.text().then(t => t.substring(0, 100));
-        log('drive_error', { fileId, status, snippet });
-        return new Response(`❌ Drive error ${status}`, { status });
+      // Шаг 2: если 302 — идём по Location вручную, с тем же Range
+      if (driveRes.status === 302) {
+        const location = driveRes.headers.get('location');
+        if (!location) {
+          log('error', { type: 'no_location', fileId });
+          return new Response('❌ Redirect without Location', { status: 500 });
+        }
+
+        // Повторяем запрос на location — с тем же Range
+        driveRes = await fetch(location, {
+          method,
+          headers: clientRange ? { 'Range': clientRange } : {},
+          redirect: 'manual',
+        });
       }
 
-      // ✅ Чистим заголовки
-      const headers = new Headers(driveRes.headers);
-      headers.set('Content-Type', 'audio/mpeg');
-      headers.set('Accept-Ranges', 'bytes');
-      headers.delete('Content-Disposition');
-      headers.delete('X-Frame-Options');
-      headers.delete('Content-Security-Policy');
-      headers.set('Cache-Control', 'public, max-age=3600'); // кэш 1 час
+      // Теперь driveRes — либо 200, либо 206
 
-      log('success', { fileId, size: headers.get('content-length') });
+      // 🧾 Формируем заголовки ответа
+      const responseHeaders = new Headers();
 
-      // 🚀 Streaming — экономим память
-      return new Response(driveRes.body, { headers });
+      // Обязательные:
+      responseHeaders.set('Accept-Ranges', 'bytes');
+      responseHeaders.set('Cache-Control', 'public, max-age=3600');
+      responseHeaders.set('Content-Type', 'audio/mpeg'); // или можно взять из driveRes
+
+      // Динамические — только если есть
+      const contentLength = driveRes.headers.get('content-length');
+      const contentRange = driveRes.headers.get('content-range');
+
+      if (contentLength) responseHeaders.set('Content-Length', contentLength);
+      if (contentRange) responseHeaders.set('Content-Range', contentRange);
+
+      // Чистим нежелательные заголовки (безопасность + CORS)
+      [
+        'Content-Disposition',
+        'X-Frame-Options',
+        'Content-Security-Policy',
+        'X-Content-Type-Options',
+        'Strict-Transport-Security'
+      ].forEach(h => responseHeaders.delete(h));
+
+      // ✅ Логгирование
+      const status = driveRes.status; // 200 или 206
+      log('success', {
+        fileId,
+        status,
+        range: clientRange,
+        contentLength,
+        contentRange
+      });
+
+      // 🚀 Возвращаем streaming-ответ
+      return new Response(driveRes.body, {
+        status,
+        headers: responseHeaders
+      });
 
     } catch (err) {
-      log('proxy_error', { fileId, error: err.message });
-      return new Response(`❌ Proxy error`, { status: 500 });
+      log('proxy_error', { fileId, error: err.message, stack: err.stack });
+      return new Response(`❌ Proxy error: ${err.message}`, { status: 500 });
     }
   }
 
