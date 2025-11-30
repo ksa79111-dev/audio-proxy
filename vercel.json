@@ -1,0 +1,15 @@
+{
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index.js" }],
+  "headers": [
+    {
+      "source": "/api/audio",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET" }
+      ]
+    }
+  ],
+  "github": {
+    "silent": true
+  }
+}
