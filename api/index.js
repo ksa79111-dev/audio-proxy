@@ -21,27 +21,27 @@ export default async function handler(req) {
   const clientRange = req.headers.get('range');
 
   try {
-    // 🔹 Шаг 1: Получить прямую ссылку (Location) через HEAD + confirm=t
+    // 🔹 Шаг 1: HEAD → получить Location
     const headUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}&confirm=t`;
     let res = await fetch(headUrl, {
       method: 'HEAD',
       redirect: 'manual',
     });
 
-    if (res.status === 302) {
+    if (res.status === 303) {
       const location = res.headers.get('location');
-      if (!location) throw new Error('No Location in 302');
+      if (!location) throw new Error('No Location in 303');
 
-      // 🔹 Шаг 2: Запросить по прямой ссылке — с Range
+      // 🔹 Шаг 2: GET по Location — с Range
       res = await fetch(location, {
         method: 'GET',
         headers: clientRange ? { 'Range': clientRange } : {},
-        redirect: 'manual',
+        redirect: 'manual', // ← важно!
       });
     }
 
-    // 🔹 Шаг 3: Формируем ответ
-    const status = res.status; // 200 или 206
+    // 🔹 Шаг 3: Отправляем ответ
+    const status = res.status;
     const headers = new Headers();
 
     // Обязательные
@@ -56,7 +56,7 @@ export default async function handler(req) {
     if (contentLength) headers.set('Content-Length', contentLength);
     if (contentRange) headers.set('Content-Range', contentRange);
 
-    // Чистим
+    // Чистим ненужные заголовки
     ['content-disposition', 'x-frame-options', 'content-security-policy'].forEach(h => headers.delete(h));
 
     log('ok', { status, contentRange, contentLength });
