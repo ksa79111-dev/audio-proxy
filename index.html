@@ -180,7 +180,8 @@
         songListEl.appendChild(div);
       });
     }
-
+    
+    // playSong v1 -----------------------------------------
     // Воспроизведение
     // function playSong(index) {
     //   if (index < 0 || index >= songs.length) return;
@@ -205,20 +206,48 @@
     //       statusEl.textContent = `❌ Не удалось: ${song.name} (${err.name})`;
     //     });
     // }
-    function playSong(index) {
+
+        // playSong v2 -----------------------------------------
+    // function playSong(index) {
+    //   if (index < 0 || index >= songs.length) return;
+    
+    //   currentIndex = index;
+    //   const song = songs[index];
+    
+    //   // 🔒 Безопасная сборка URL — экранируем ТОЛЬКО ID
+    //   const fileId = encodeURIComponent(song.id); // только ID, не весь URL!
+    //   const directUrl = `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
+      
+    //   // Теперь — proxy:
+    //   const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(directUrl)}`;
+    //   // const proxyUrl = `https://audio-proxy-google-drivev1.vercel.app/api/audio?id=${song.id}`;
+      
+    
+    //   player.src = proxyUrl;
+    //   statusEl.textContent = `▶️ Загрузка: ${song.name}…`;
+    
+    //   player.play()
+    //     .then(() => {
+    //       statusEl.textContent = `▶️ Играет: ${song.name}`;
+    //       playBtn.textContent = '⏹️ Остановить';
+    //       isPlaying = true;
+    //       highlightCurrent(index);
+    //     })
+    //     .catch(err => {
+    //       console.error('Playback error:', err);
+    //       statusEl.textContent = `❌ Не удалось: ${song.name} (${err.name || 'ошибка'})`;
+    //     });
+    // }
+    
+    // playSong v3 -----------------------------------------
+      function playSong(index) {
       if (index < 0 || index >= songs.length) return;
     
       currentIndex = index;
       const song = songs[index];
     
-      // 🔒 Безопасная сборка URL — экранируем ТОЛЬКО ID
-      const fileId = encodeURIComponent(song.id); // только ID, не весь URL!
-      const directUrl = `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
-      
-      // Теперь — proxy:
-      // const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(directUrl)}`;
+      // ✅ Ваш Vercel-прокси (без пробелов, без codetabs)
       const proxyUrl = `https://audio-proxy-google-drivev1.vercel.app/api/audio?id=${song.id}`;
-      
     
       player.src = proxyUrl;
       statusEl.textContent = `▶️ Загрузка: ${song.name}…`;
@@ -235,7 +264,7 @@
           statusEl.textContent = `❌ Не удалось: ${song.name} (${err.name || 'ошибка'})`;
         });
     }
-
+    
     function highlightCurrent(index) {
       document.querySelectorAll('.song-item').forEach((el, i) => {
         el.classList.toggle('playing', i === index);
@@ -291,16 +320,8 @@
     player.addEventListener('loadedmetadata', () => {
       durationEl.textContent = formatTime(player.duration || 0);
       // max остаётся 100 — потому что это %, а не секунды
-    });
-    
-    // ✅ Главное: перемотка по клику/перетаскиванию
-    progressInput.addEventListener('input', () => {
-      if (player.duration && !isNaN(player.duration)) {
-        const percent = parseFloat(progressInput.value);
-        player.currentTime = (percent / 100) * player.duration;
-      }
-    });
-    
+    });    
+  
     // Необязательно, но улучшает UX:
     progressInput.addEventListener('mousedown', () => {
       player.pause(); // пауза при начале промотки
@@ -336,12 +357,6 @@
         }
       }
     });
-
-    // Обработчики
-    player.onended = () => {
-      if (loopCheck.checked) playNextSong();
-      else togglePlayback();
-    };
 
     loadBtn.addEventListener('click', loadSongs);
     playBtn.addEventListener('click', togglePlayback);
