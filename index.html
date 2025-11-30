@@ -216,7 +216,9 @@
       const directUrl = `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
       
       // Теперь — proxy:
-      const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(directUrl)}`;
+      // const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(directUrl)}`;
+      const proxyUrl = `https://audio-proxy-google-drivev1.vercel.app/api/audio?id=${song.id}`;
+      
     
       player.src = proxyUrl;
       statusEl.textContent = `▶️ Загрузка: ${song.name}…`;
