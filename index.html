@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🎧 Плеер из Google Drive</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      max-width: 700px;
+      margin: 1.5rem auto;
+      padding: 0 1rem;
+      text-align: center;
+      background: #fafafa;
+      color: #333;
+    }
+    h1 { font-weight: 600; margin-bottom: 1rem; }
+    .folder-input {
+      margin: 1.5rem 0;
+    }
+    .folder-input label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+    .folder-input input {
+      width: 100%;
+      max-width: 500px;
+      padding: 0.6rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      background: #4285f4;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      font-size: 1.05rem;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 0.5rem;
+      transition: background 0.2s;
+    }
+    button:hover { background: #3367d6; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    .controls {
+      margin: 1rem 0;
+    }
+    .status { margin-top: 1rem; min-height: 1.4em; }
+    .song-list {
+      margin-top: 1.5rem;
+      text-align: left;
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .song-item {
+      padding: 0.4rem 0.6rem;
+      background: #f1f8ff;
+      margin: 0.3rem 0;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .song-item:hover { background: #e0f0ff; }
+    .song-item.playing { background: #d0e7ff; font-weight: bold; }
+    .progress-container input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #4285f4;
+      cursor: pointer;
+    }
+    .progress-container input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #4285f4;
+      border: none;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎧 Плеер из Google Drive</h1>
+
+  <div class="folder-input">
+    <label for="folderId">ID папки в Google Drive:</label>
+    <input type="text" id="folderId" 
+           value="12OvdZiyaAjaSW1W3Pm3O6M-ekZYk4-am" 
+           placeholder="Например: 1AbC_xYz9...">
+  </div>
+
+  <button id="loadBtn">📥 Загрузить список песен</button>
+  <button id="playBtn" disabled>▶️ Сыграть случайную</button>
+
+  <div class="controls">
+    <label><input type="checkbox" id="shuffle" checked> Случайный порядок</label>
+    <label><input type="checkbox" id="loop" checked> Повторять</label>
+  </div>
+
+  <div class="status" id="status">Введите ID папки и нажмите «Загрузить»</div>
+
+
+  <!-- Прогресс-бар -->
+  <div class="progress-container" style="max-width:500px; margin:1rem auto; padding:0 1rem;">
+    <div style="display:flex; justify-content:space-between; font-size:0.85rem; color:#666;">
+      <span id="currentTime">0:00</span>
+      <span id="duration">0:00</span>
+    </div>
+    <input type="range" id="progress" value="0" min="0" max="100" 
+           style="width:100%; margin:0.5rem 0; height:6px; -webkit-appearance:none; background:#eee; border-radius:3px;" />
+  </div>
+  <div class="song-list" id="songList"></div>
+
+  <audio id="player" style="display:none"></audio>
+
+  <script>
+    // ——— КОНФИГ ———
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyUK2uAIzpMejSMckdPx0g1bs__J5Zxh2kif6b8cITYfHwrYKWsxG92s4tAC-B4y3j9/exec';
+    
+    let songs = [];
+    let currentIndex = -1;
+    let isPlaying = false;
+    const player = document.getElementById('player');
+    const folderIdInput = document.getElementById('folderId');
+    const loadBtn = document.getElementById('loadBtn');
+    const playBtn = document.getElementById('playBtn');
+    const statusEl = document.getElementById('status');
+    const songListEl = document.getElementById('songList');
+    const shuffleCheck = document.getElementById('shuffle');
+    const loopCheck = document.getElementById('loop');
+    const progressInput = document.getElementById('progress');
+    const currentTimeEl = document.getElementById('currentTime');
+    const durationEl = document.getElementById('duration');
+
+    // Загрузка списка
+    async function loadSongs() {
+      const folderId = folderIdInput.value.trim();
+      if (!folderId) {
+        statusEl.textContent = '❌ Укажите ID папки';
+        return;
+      }
+
+      statusEl.textContent = 'Загрузка списка…';
+      loadBtn.disabled = true;
+
+      try {
+        const url = `${SCRIPT_URL}?folderId=${encodeURIComponent(folderId)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.error) throw new Error(data.error);
+
+        songs = data;
+        renderSongList();
+        playBtn.disabled = songs.length === 0; // активна, если есть хотя бы 1 песня
+        statusEl.textContent = `✅ Загружено ${songs.length} песен`;
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = `❌ Ошибка: ${err.message || 'не удалось загрузить'}`;
+        songs = [];
+        playBtn.disabled = true;
+      } finally {
+        loadBtn.disabled = false;
+      }
+    }
+
+    function renderSongList() {
+      songListEl.innerHTML = songs.length 
+        ? `<h3>Песни (${songs.length}):</h3>` 
+        : '';
+      
+      songs.forEach((song, i) => {
+        const div = document.createElement('div');
+        div.className = 'song-item';
+        div.textContent = song.name;
+        div.onclick = () => playSong(i);
+        songListEl.appendChild(div);
+      });
+    }
+
+    // Воспроизведение
+    // function playSong(index) {
+    //   if (index < 0 || index >= songs.length) return;
+      
+    //   currentIndex = index;
+    //   const song = songs[index];
+      
+    //   const directUrl = `https://drive.google.com/uc?export=download&id=${song.id}&confirm=t`;
+    //   const proxyUrl = 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(directUrl);
+      
+    //   player.src = proxyUrl;
+    //   statusEl.textContent = `▶️ Загрузка: ${song.name}…`;
+
+    //   player.play()
+    //     .then(() => {
+    //       statusEl.textContent = `▶️ Играет: ${song.name}`;
+    //       playBtn.textContent = '⏹️ Остановить';
+    //       isPlaying = true;
+    //       highlightCurrent(index);
+    //     })
+    //     .catch(err => {
+    //       statusEl.textContent = `❌ Не удалось: ${song.name} (${err.name})`;
+    //     });
+    // }
+    function playSong(index) {
+      if (index < 0 || index >= songs.length) return;
+    
+      currentIndex = index;
+      const song = songs[index];
+    
+      // 🔒 Безопасная сборка URL — экранируем ТОЛЬКО ID
+      const fileId = encodeURIComponent(song.id); // только ID, не весь URL!
+      const directUrl = `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
+      
+      // Теперь — proxy:
+      const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(directUrl)}`;
+    
+      player.src = proxyUrl;
+      statusEl.textContent = `▶️ Загрузка: ${song.name}…`;
+    
+      player.play()
+        .then(() => {
+          statusEl.textContent = `▶️ Играет: ${song.name}`;
+          playBtn.textContent = '⏹️ Остановить';
+          isPlaying = true;
+          highlightCurrent(index);
+        })
+        .catch(err => {
+          console.error('Playback error:', err);
+          statusEl.textContent = `❌ Не удалось: ${song.name} (${err.name || 'ошибка'})`;
+        });
+    }
+
+    function highlightCurrent(index) {
+      document.querySelectorAll('.song-item').forEach((el, i) => {
+        el.classList.toggle('playing', i === index);
+      });
+    }
+
+    function playNextSong() {
+      if (songs.length === 0) return;
+      
+      let nextIndex;
+      if (shuffleCheck.checked) {
+        do { nextIndex = Math.floor(Math.random() * songs.length); }
+        while (songs.length > 1 && nextIndex === currentIndex);
+      } else {
+        nextIndex = (currentIndex + 1) % songs.length;
+      }
+      playSong(nextIndex);
+    }
+
+    function togglePlayback() {
+      if (isPlaying) {
+        player.pause();
+        player.src = '';
+        isPlaying = false;
+        playBtn.textContent = '▶️ Сыграть случайную';
+        statusEl.textContent = 'Остановлено';
+        document.querySelectorAll('.song-item').forEach(el => el.classList.remove('playing'));
+      } else {
+        if (songs.length === 0) {
+          alert('Сначала загрузите список песен!');
+          return;
+        }
+        const index = Math.floor(Math.random() * songs.length); // всегда случайно при старте
+        playSong(index);
+      }
+    }
+    // Форматирование времени: секунды → MM:SS
+    function formatTime(seconds) {
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    }
+    
+    // Обновление прогресс-бара
+    player.addEventListener('timeupdate', () => {
+      if (player.duration && !isNaN(player.duration)) {
+        const percent = (player.currentTime / player.duration) * 100;
+        progressInput.value = percent;
+        currentTimeEl.textContent = formatTime(player.currentTime);
+      }
+    });
+    
+    player.addEventListener('loadedmetadata', () => {
+      durationEl.textContent = formatTime(player.duration || 0);
+      // max остаётся 100 — потому что это %, а не секунды
+    });
+    
+    // ✅ Главное: перемотка по клику/перетаскиванию
+    progressInput.addEventListener('input', () => {
+      if (player.duration && !isNaN(player.duration)) {
+        const percent = parseFloat(progressInput.value);
+        player.currentTime = (percent / 100) * player.duration;
+      }
+    });
+    
+    // Необязательно, но улучшает UX:
+    progressInput.addEventListener('mousedown', () => {
+      player.pause(); // пауза при начале промотки
+    });
+    progressInput.addEventListener('mouseup', () => {
+      if (isPlaying) player.play();
+    });
+    
+    // При окончании — сброс
+    player.addEventListener('ended', () => {
+      progressInput.value = 0;
+      currentTimeEl.textContent = '0:00';
+      if (loopCheck.checked) playNextSong();
+      else togglePlayback();
+    });
+
+    // Добавьте после других addEventListener:
+    player.addEventListener('seeking', () => {
+      // Можно показать "перемотка..." — не обязательно
+    });
+    
+    player.addEventListener('seeked', () => {
+      if (isPlaying) player.play(); // продолжить после перемотки
+    });
+    
+    // Улучшаем input для надёжности:
+    progressInput.addEventListener('input', () => {
+      const percent = parseFloat(progressInput.value);
+      if (player.duration && !isNaN(player.duration) && isFinite(player.duration)) {
+        const time = (percent / 100) * player.duration;
+        if (!isNaN(time) && isFinite(time)) {
+          player.currentTime = time;
+        }
+      }
+    });
+
+    // Обработчики
+    player.onended = () => {
+      if (loopCheck.checked) playNextSong();
+      else togglePlayback();
+    };
+
+    loadBtn.addEventListener('click', loadSongs);
+    playBtn.addEventListener('click', togglePlayback);
+
+    // Предзаполнение и автозагрузка (опционально)
+    loadSongs(); // раскомментировать, если хотите автозагрузку при открытии
+  </script>
+</body>
+</html>
